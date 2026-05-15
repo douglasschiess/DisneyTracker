@@ -10,18 +10,69 @@
   <style>
     * { box-sizing: border-box; }
 
+    /* Disneyland / California-inspired animated gradient */
+    html {
+      min-height: 100%;
+      position: relative;
+      background: linear-gradient(135deg,
+        #1a1a6e 0%,
+        #003a8c 12%,
+        #0077c8 24%,
+        #00b4d8 34%,
+        #f4a261 46%,
+        #e63946 56%,
+        #c77dff 67%,
+        #ff6b6b 78%,
+        #ffd166 88%,
+        #06d6a0 100%
+      );
+      background-size: 400% 400%;
+      animation: disneyGradient 18s ease infinite;
+    }
+
+    /* Mickey ears pattern layered over the gradient */
+    html::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      /* Each "Mickey" unit is 80x80px:
+         - head: 22px circle centered at (40,44)
+         - left ear: 13px circle centered at (20,22)
+         - right ear: 13px circle centered at (60,22) */
+      background-image:
+        radial-gradient(circle at 40px 44px, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 13px, transparent 13px),
+        radial-gradient(circle at 20px 22px, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18)  9px, transparent  9px),
+        radial-gradient(circle at 60px 22px, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18)  9px, transparent  9px);
+      background-size: 80px 80px;
+      background-repeat: repeat;
+    }
+
+    /* Make sure the app card sits above the pattern */
+    .app-card { position: relative; z-index: 1; }
+
+    @keyframes disneyGradient {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
     body {
       font-family: sans-serif;
       max-width: 900px;
-      margin: 30px auto;
-      padding: 20px;
-      background: #cfe9ff;
-      background-image:
-        radial-gradient(circle at 20px 20px, rgba(255,255,255,0.25) 0, rgba(255,255,255,0.25) 6px, transparent 6px),
-        radial-gradient(circle at 40px 20px, rgba(255,255,255,0.25) 0, rgba(255,255,255,0.25) 6px, transparent 6px),
-        radial-gradient(circle at 30px 35px, rgba(255,255,255,0.25) 0, rgba(255,255,255,0.25) 10px, transparent 10px);
-      background-size: 80px 80px;
-      background-repeat: repeat;
+      margin: 0 auto;
+      padding: 30px 20px;
+      background: transparent;
+    }
+
+    .app-card {
+      background: rgba(255,255,255,0.93);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-radius: 20px;
+      padding: 26px;
+      box-shadow: 0 8px 36px rgba(0,0,0,0.20);
     }
 
     input, button, select, textarea {
@@ -183,16 +234,18 @@
     .danger-btn:hover { background: #a93226; }
 
     @media print {
+      html { animation: none !important; background: white !important; }
+      .app-card { box-shadow: none; backdrop-filter: none; background: white; border-radius: 0; padding: 0; }
       select, button, input, textarea, .timer-box, #queueBox, #rideBox,
-      #savedBanner, #addActivityBtn, .bottom-actions, label, h2 + select {
+      #savedBanner, #addActivityBtn, .bottom-actions, label {
         display: none !important;
       }
-      body { background: white !important; }
       .summary-container { border: 1px solid #999; }
     }
   </style>
 </head>
 <body>
+<div class="app-card">
 
 <h2>🎢 Disneyland Activity & Ride Tracker</h2>
 
@@ -747,6 +800,51 @@ function exportEmail() {
   window.location.href = `mailto:?subject=${subject}&body=${bodyEnc}`;
 }
 
+/* ---------- Export: PDF (print dialog) ---------- */
+function exportPDF() {
+  if (!activities.length) { alert("No activities to export yet!"); return; }
+  window.print();
+}
+
+/* ---------- Export: Email (mailto) ---------- */
+function exportEmail() {
+  if (!activities.length) { alert("No activities to export yet!"); return; }
+
+  const names = { bathroom:"Bathroom Break", security:"Security Check", enterPark:"Entered Park", exitPark:"Left Park", leftHotel:"Left Hotel", ride:"Ride", food:"Food" };
+  const date  = new Date().toLocaleDateString();
+
+  let body = `Disneyland Trip Report — ${date}\n`;
+  body    += "=".repeat(40) + "\n\n";
+  body    += "TIMELINE\n";
+
+  activities.forEach((a, i) => {
+    if (a.type === "ride") {
+      body += `${i+1}. [${a.timestamp}] Ride: ${a.ride} (${a.park}) — Wait: ${a.wait} min, Ride: ${a.duration} min\n`;
+    } else if (a.type === "food") {
+      body += `${i+1}. [${a.timestamp}] Food — ${a.details || "No details"} ($${(a.cost||0).toFixed(2)})\n`;
+    } else {
+      body += `${i+1}. [${a.timestamp}] ${names[a.type] || a.type}\n`;
+    }
+  });
+
+  const rides     = activities.filter(x => x.type === "ride");
+  const totalWait = rides.reduce((s,r) => s + r.wait, 0);
+  const avgWait   = rides.length ? (totalWait / rides.length).toFixed(1) : 0;
+  const totalRide = rides.reduce((s,r) => s + r.duration, 0);
+  const totalFood = activities.filter(x => x.type === "food").reduce((s,f) => s + (f.cost||0), 0);
+
+  body += "\n" + "=".repeat(40) + "\n";
+  body += "SUMMARY\n";
+  body += `Total Rides: ${rides.length}\n`;
+  body += `Total Queue Time: ${totalWait} min  |  Avg Wait: ${avgWait} min\n`;
+  body += `Total Ride Time: ${totalRide} min\n`;
+  body += `Total Food Spent: $${totalFood.toFixed(2)}\n`;
+
+  const subject = encodeURIComponent(`Disneyland Trip Report — ${date}`);
+  const bodyEnc = encodeURIComponent(body);
+  window.location.href = `mailto:?subject=${subject}&body=${bodyEnc}`;
+}
+
 /* ---------- localStorage ---------- */
 const STORAGE_KEY = "disneyTracker_activities";
 
@@ -807,5 +905,6 @@ if (activities.length > 0) {
 
 </div>
 
+</div><!-- /.app-card -->
 </body>
 </html>
